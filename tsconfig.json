@@ -4,9 +4,9 @@
     "outDir": "dist",
     "baseUrl": ".",
 
-    "target": "es2021",
+    "target": "es2022",
     "module": "esnext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "lib": ["esnext"],
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
@@ -16,7 +16,7 @@
     "declaration": true,
     "downlevelIteration": true,
 
-    "suppressImplicitAnyIndexErrors": true,
+    "noImplicitAny": false,
 
     "ignoreDeprecations": "5.0",
 
@@ -29,6 +29,7 @@
     "noPropertyAccessFromIndexSignature": true,
 
     "paths": {
+      "cross-inspect": ["packages/inspect/src/index.ts"],
       "@graphql-tools/*-loader": [
         "packages/loaders/*/src/index.ts",
         "packages/*-loader/src/index.ts"

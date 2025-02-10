@@ -52,4 +52,24 @@ describe('mergeDeep', () => {
     expect(merged.one.b()).toEqual('b');
     expect(merged.a).toBeUndefined();
   });
+
+  it('merges arrays', () => {
+    const x = { a: [1, 2, 5] };
+    const y = { a: [3, 4] };
+    expect(mergeDeep([x, y], false, true)).toEqual({ a: [1, 2, 5, 3, 4] });
+  });
+  it('merges arrays with the same length', () => {
+    const x = [{ a: 1 }, { b: 2 }];
+    const y = [{ c: 3 }, { d: 4 }];
+    expect(mergeDeep([x, y], false, true, true)).toEqual([
+      { a: 1, c: 3 },
+      { b: 2, d: 4 },
+    ]);
+  });
+
+  it('merges string arrays', () => {
+    const a = { options: ['$A', '$B'] };
+    const b = { options: ['$A', '$B'] };
+    expect(mergeDeep([a, b], undefined, true, true)).toEqual({ options: ['$A', '$B'] });
+  });
 });

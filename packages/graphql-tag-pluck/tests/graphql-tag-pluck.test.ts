@@ -268,6 +268,47 @@ describe('graphql-tag-pluck', () => {
       );
     });
 
+    it("should pluck graphql-tag template literals from .ts that use 'using' keyword", async () => {
+      const sources = await pluck(
+        'tmp-XXXXXX.ts',
+        freeText(`
+        import { graphql } from '../somewhere'
+        import { Document } from 'graphql'
+        import createManagedResource from 'managed-resource'
+
+        using managedResource = createManagedResource()
+
+        const fragment: Document = graphql(\`
+            fragment Foo on FooType {
+              id
+            }
+          \`)
+
+          const doc: Document = graphql(\`
+            query foo {
+              foo {
+                ...Foo
+              }
+            }
+            \`)
+      `),
+      );
+
+      expect(sources.map(source => source.body).join('\n\n')).toEqual(
+        freeText(`
+        fragment Foo on FooType {
+          id
+        }
+
+        query foo {
+          foo {
+            ...Foo
+          }
+        }
+      `),
+      );
+    });
+
     it('should pluck graphql-tag template literals from .ts file', async () => {
       const sources = await pluck(
         'tmp-XXXXXX.ts',
@@ -1163,6 +1204,138 @@ describe('graphql-tag-pluck', () => {
       );
     });
 
+    it('should pluck graphql-tag template literals from .astro file', async () => {
+      const sources = await pluck(
+        'tmp-XXXXXX.astro',
+        freeText(`
+        ---
+        import gql from 'graphql-tag';
+
+        let q = gql\`
+          query IndexQuery {
+            site {
+              siteMetadata {
+                title
+              }
+            }
+          }
+        \`;
+        ---
+
+        <div>foo</div>
+        `),
+      );
+
+      expect(sources.map(source => source.body).join('\n\n')).toEqual(
+        freeText(`
+          query IndexQuery {
+            site {
+              siteMetadata {
+                title
+              }
+            }
+          }
+        `),
+      );
+    });
+
+    it('should pluck graphql-tag template literals from .astro file with 2 queries', async () => {
+      const sources = await pluck(
+        'tmp-XXXXXX.astro',
+        freeText(`
+        ---
+        import gql from 'graphql-tag';
+
+        let q = gql\`
+          query IndexQuery {
+            site {
+              siteMetadata {
+                title
+              }
+            }
+          }
+        \`;
+        let q2 = gql\`
+          query IndexQuery2 {
+            site {
+              siteMetadata {
+                title
+              }
+            }
+          }
+        \`;
+        ---
+
+        <div>foo</div>
+        `),
+      );
+
+      expect(sources.map(source => source.body).join('\n\n')).toEqual(
+        freeText(`
+        query IndexQuery {
+          site {
+            siteMetadata {
+              title
+            }
+          }
+        }
+
+        query IndexQuery2 {
+          site {
+            siteMetadata {
+              title
+            }
+          }
+        }
+        `),
+      );
+    });
+
+    it('should pluck graphql-tag template literals from .astro removing comments', async () => {
+      const sources = await pluck(
+        'tmp-XXXXXX.astro',
+        freeText(`
+        ---
+        import gql from 'graphql-tag';
+
+        let q = gql\`
+          query IndexQuery {
+            site {
+              siteMetadata {
+                title
+              }
+            }
+          }
+        \`;
+
+        // let q2 = gql\`
+        //   query IndexQuery2 {
+        //     site {
+        //       siteMetadata {
+        //         title
+        //       }
+        //     }
+        //   }
+        // \`;
+        ---
+
+        <div>foo</div>
+        `),
+      );
+
+      expect(sources.map(source => source.body).join('\n\n')).toEqual(
+        freeText(`
+        query IndexQuery {
+          site {
+            siteMetadata {
+              title
+            }
+          }
+        }
+        `),
+      );
+    });
+
     it('should pluck graphql-tag template literals from .tsx file with generic jsx elements', async () => {
       const sources = await pluck(
         'tmp-XXXXXX.tsx',
@@ -1770,7 +1943,6 @@ describe('graphql-tag-pluck', () => {
           globalGqlIdentifierName: 'anothergql',
         },
       );
-
       expect(sources.map(source => source.body).join('\n\n')).toEqual(
         freeText(`
         fragment Foo on FooType {
@@ -1783,6 +1955,39 @@ describe('graphql-tag-pluck', () => {
           }
         }
       `),
+      );
+    });
+
+    it('should be able to specify the global GraphQL identifier name case sensitively', async () => {
+      const sources = await pluck(
+        'tmp-XXXXXX.js',
+        freeText(`
+        const fragment = anotherGql(\`
+          fragment Foo on FooType {
+            id
+          }
+        \`)
+
+        const doc = AnotherGql\`
+          query foo {
+            foo {
+              ...Foo
+            }
+          }
+
+          \${fragment}
+        \`
+      `),
+        {
+          globalGqlIdentifierName: 'anotherGql',
+        },
+      );
+
+      expect(sources.map(source => source.body).join('\n\n')).toEqual(
+        freeText(`
+        fragment Foo on FooType {
+          id
+        }`),
       );
     });
 
@@ -1808,6 +2013,86 @@ describe('graphql-tag-pluck', () => {
           text
           media
           draftjs
+        }
+      `),
+      );
+    });
+
+    it('should be able to specify a custom Vue block to pluck from', async () => {
+      const sources = await pluck(
+        'tmp-XXXXXX.vue',
+        freeText(`
+        <template lang="pug">
+          <div>test</div>
+        </template>
+
+        <script lang="ts">
+        import { defineComponent } from 'vue'
+        import gql from 'graphql-tag';
+
+        export default defineComponent({
+          name: 'TestComponent',
+          setup(){
+            return {
+              pageQuery: gql\`
+              query IndexQuery {
+                site {
+                  siteMetadata {
+                    title
+                  }
+                }
+              }
+            \`
+            }
+          }
+        })
+
+        // export const pageQuery = gql\`
+        //   query OtherQuery {
+        //     site {
+        //       siteMetadata {
+        //         title
+        //       }
+        //     }
+        //   }
+        // \`;
+        </script>
+
+        <style lang="scss">
+        .test { color: red };
+        </style>
+
+        <graphql lang="gql">
+        query CustomBlockQuery {
+          site {
+            siteMetadata {
+              title
+            }
+          }
+        }
+        </graphql>
+      `),
+        {
+          gqlVueBlock: 'graphql',
+        },
+      );
+
+      expect(sources.map(source => source.body).join('\n\n')).toEqual(
+        freeText(`
+        query IndexQuery {
+          site {
+            siteMetadata {
+              title
+            }
+          }
+        }
+
+        query CustomBlockQuery {
+          site {
+            siteMetadata {
+              title
+            }
+          }
         }
       `),
       );
@@ -2080,6 +2365,336 @@ describe('graphql-tag-pluck', () => {
             }
           }
         `),
+      );
+    });
+
+    it('should pluck graphql-tag template literals using the custom `isGqlTemplateLiteral` hook', async () => {
+      const query = freeText(`#graphql
+        query queryName {
+          id
+        }
+      `);
+      const fileContent = `export const query = \`${query}\`;`;
+      const fileName = 'tmp-HOOKS1.ts';
+
+      // Default behavior: ignores in-query comments
+      let sources = await pluck(fileName, fileContent);
+      expect(sources.map(source => source.body).join('\n\n')).toEqual('');
+
+      // Custom behavior: recognizes in-query comments
+      sources = await pluck(fileName, fileContent, {
+        isGqlTemplateLiteral: node => {
+          return (
+            node.type === 'TemplateLiteral' &&
+            /\s*#graphql\s*\n/i.test(node.quasis[0]?.value?.raw || '')
+          );
+        },
+      });
+
+      expect(sources.map(source => source.body).join('\n\n')).toEqual(query);
+    });
+
+    it('should pluck graphql-tag template literals using the custom `pluckStringFromFile` hook', async () => {
+      const query = freeText(`
+        query queryName { id }
+        \${ANOTHER_VARIABLE}
+      `);
+      const fileContent = `export const query = /* GraphQL */ \`${query}\`;`;
+      const fileName = 'tmp-HOOKS2.ts';
+
+      // Default behavior: removes expressions
+      let sources = await pluck(fileName, fileContent);
+      expect(sources.map(source => source.body).join('\n\n')).toEqual('query queryName { id }');
+
+      // Custom behavior: keeps expressions as comments
+      sources = await pluck(fileName, fileContent, {
+        pluckStringFromFile: (code, { start, end }) => {
+          return (
+            code
+              .slice(start! + 1, end! - 1)
+              // Annotate embedded expressions
+              // e.g. ${foo} -> #EXPRESSION:foo
+              .replace(/\$\{([^}]*)\}/g, (_, m1) => '#EXPRESSION:' + m1)
+              .split('\\`')
+              .join('`')
+          );
+        },
+      });
+
+      expect(sources.map(source => source.body).join('\n\n')).toEqual(
+        'query queryName { id }\n#EXPRESSION:ANOTHER_VARIABLE',
+      );
+    });
+
+    it('should pluck graphql-tag template literals from .gts file', async () => {
+      const sources = await pluck(
+        'tmp-XXXXXX.gts',
+        freeText(`
+    import Component from '@glimmer/component';
+    import graphql from 'graphql-tag';
+
+    const UpdateCreditCardMutationDocument = graphql(\`
+      mutation updateCreditCard($input: UpdateCreditCardInput!) {
+        updateCreditCard(input: $input) {
+          __typename
+        }
+      }
+    \`);
+
+
+    export default class PaymentDetailsPage extends Component<unknown> {
+      updateCreditCardMutation = async (): Promise<void> => {
+        return await new Promise((resolve) => resolve());
+      }
+
+      onSubmit = async (): Promise<void> => {
+        return this.updateCreditCardMutation();
+      }
+
+      <template>
+        <div>
+          <h1>Update Payment Details</h1>
+          <p data-test-existing-payment-method>{{this.paymentMethodText}}</p>
+          <button {{on "click" this.onSubmit}}>Submit</button>
+        </div>
+      </template>
+    }
+    `),
+      );
+
+      expect(sources.map(source => source.body).join('\n\n')).toEqual(
+        freeText(`
+    mutation updateCreditCard($input: UpdateCreditCardInput!) {
+      updateCreditCard(input: $input) {
+        __typename
+      }
+    }
+  `),
+      );
+    });
+
+    it('should pluck graphql-tag template literals from .gjs file', async () => {
+      const sources = await pluck(
+        'tmp-XXXXXX.gjs',
+        freeText(`
+    import Component from '@glimmer/component';
+    import graphql from 'graphql-tag';
+
+    const UpdateCreditCardMutationDocument = graphql(\`
+      mutation updateCreditCard($input: UpdateCreditCardInput!) {
+        updateCreditCard(input: $input) {
+          __typename
+        }
+      }
+    \`);
+
+
+    export default class PaymentDetailsPage extends Component<unknown> {
+      updateCreditCardMutation = async (): Promise<void> => {
+        return await new Promise((resolve) => resolve());
+      }
+
+      onSubmit = async (): Promise<void> => {
+        return this.updateCreditCardMutation();
+      }
+
+      <template>
+        <div>
+          <h1>Update Payment Details</h1>
+          <p data-test-existing-payment-method>{{this.paymentMethodText}}</p>
+          <button {{on "click" this.onSubmit}}>Submit</button>
+        </div>
+      </template>
+    }
+    `),
+      );
+
+      expect(sources.map(source => source.body).join('\n\n')).toEqual(
+        freeText(`
+    mutation updateCreditCard($input: UpdateCreditCardInput!) {
+      updateCreditCard(input: $input) {
+        __typename
+      }
+    }
+  `),
+      );
+    });
+
+    it('should pluck graphql-tag template literals from .gts file with 2 queries', async () => {
+      const sources = await pluck(
+        'tmp-XXXXXX.gts',
+        freeText(`
+    import Component from '@glimmer/component';
+    import graphql from 'graphql-tag'
+
+    const UpdateCreditCardMutationDocument = graphql(\`
+      mutation updateCreditCard($input: UpdateCreditCardInput!) {
+        updateCreditCard(input: $input) {
+          __typename
+        }
+      }
+    \`);
+
+    const UpdatePaypalMutationDocument = graphql(\`
+      mutation updatePaypal($input: UpdatePaypalInput!) {
+        updatePaypal(input: $input) {
+          __typename
+        }
+      }
+    \`);
+
+
+    export default class PaymentDetailsPage extends Component<unknown> {
+      updateCreditCardMutation = async (): Promise<void> => {
+        return await new Promise((resolve) => resolve());
+      }
+
+      onSubmit = async (): Promise<void> => {
+        return this.updateCreditCardMutation();
+      }
+
+      <template>
+        <div>
+          <h1>Update Payment Details</h1>
+          <p data-test-existing-payment-method>{{this.paymentMethodText}}</p>
+          <button {{on "click" this.onSubmit}}>Submit</button>
+        </div>
+      </template>
+    }
+    `),
+      );
+
+      expect(sources.map(source => source.body).join('\n\n')).toEqual(
+        freeText(`
+    mutation updateCreditCard($input: UpdateCreditCardInput!) {
+      updateCreditCard(input: $input) {
+        __typename
+      }
+    }
+
+    mutation updatePaypal($input: UpdatePaypalInput!) {
+      updatePaypal(input: $input) {
+        __typename
+      }
+    }
+  `),
+      );
+    });
+
+    it('should pluck graphql-tag template literals from .gts file with multiple queries in different function signatures', async () => {
+      const sources = await pluck(
+        'tmp-XXXXXX.gts',
+        freeText(`
+    import Component from '@glimmer/component';
+    import graphql from 'graphql-tag'
+
+    const UpdateCreditCardMutationDocument = graphql(\`
+      mutation updateCreditCard($input: UpdateCreditCardInput!) {
+        updateCreditCard(input: $input) {
+          __typename
+        }
+      }
+    \`);
+
+    export function anotherQuery() {
+      const UpdatePaypalMutationDocument = graphql(\`
+        mutation updatePaypal($input: UpdatePaypalInput!) {
+          updatePaypal(input: $input) {
+            __typename
+          }
+        }
+    \`);
+    }
+
+    export default class PaymentDetailsPage extends Component<unknown> {
+      updateCreditCardMutation = async (): Promise<void> => {
+        return await new Promise((resolve) => resolve());
+      }
+
+      onSubmit = async (): Promise<void> => {
+        return this.updateCreditCardMutation();
+      }
+
+      <template>
+        <div>
+          <h1>Update Payment Details</h1>
+          <p data-test-existing-payment-method>{{this.paymentMethodText}}</p>
+          <button {{on "click" this.onSubmit}}>Submit</button>
+        </div>
+      </template>
+    }
+    `),
+      );
+
+      expect(sources.map(source => source.body).join('\n\n')).toEqual(
+        freeText(`
+    mutation updateCreditCard($input: UpdateCreditCardInput!) {
+      updateCreditCard(input: $input) {
+        __typename
+      }
+    }
+
+    mutation updatePaypal($input: UpdatePaypalInput!) {
+      updatePaypal(input: $input) {
+        __typename
+      }
+    }
+  `),
+      );
+    });
+
+    it('should pluck graphql-tag template literals from .gts file, ignoring comments', async () => {
+      const sources = await pluck(
+        'tmp-XXXXXX.gts',
+        freeText(`
+    import Component from '@glimmer/component';
+    import graphql from 'graphql-tag'
+
+    const UpdateCreditCardMutationDocument = graphql(\`
+      mutation updateCreditCard($input: UpdateCreditCardInput!) {
+        updateCreditCard(input: $input) {
+          __typename
+        }
+      }
+    \`);
+
+    // const UpdatePaypalMutationDocument = graphql(\`
+    // mutation updatePaypal($input: UpdatePaypalInput!) {
+    //    updatePaypal(input: $input) {
+    //      __typename
+    //    }
+    //  }
+    // \`);
+
+
+    export default class PaymentDetailsPage extends Component<unknown> {
+      updateCreditCardMutation = async (): Promise<void> => {
+        return await new Promise((resolve) => resolve());
+      }
+
+      onSubmit = async (): Promise<void> => {
+        return this.updateCreditCardMutation();
+      }
+
+      <template>
+        <div>
+          <h1>Update Payment Details</h1>
+          <p data-test-existing-payment-method>{{this.paymentMethodText}}</p>
+          <button {{on "click" this.onSubmit}}>Submit</button>
+        </div>
+      </template>
+    }
+    `),
+      );
+
+      expect(sources.map(source => source.body).join('\n\n')).toEqual(
+        freeText(`
+    mutation updateCreditCard($input: UpdateCreditCardInput!) {
+      updateCreditCard(input: $input) {
+        __typename
+      }
+    }
+  `),
       );
     });
   });

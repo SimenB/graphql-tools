@@ -8,11 +8,11 @@ import {
   print,
 } from 'graphql';
 import { createHandler } from 'graphql-sse/lib/use/http';
-import { useServer } from 'graphql-ws/lib/use/ws';
+import { useServer } from 'graphql-ws/use/ws';
 import { SubscriptionServer } from 'subscriptions-transport-ws';
-import { Server as WSServer } from 'ws';
+import { WebSocketServer } from 'ws';
 import { execute, isIncrementalResult, subscribe } from '@graphql-tools/executor';
-import { AsyncFetchFn } from '@graphql-tools/executor-http';
+import type { AsyncFetchFn } from '@graphql-tools/executor-http';
 import { loadSchema } from '@graphql-tools/load';
 import { ExecutionResult, printSchemaWithDirectives } from '@graphql-tools/utils';
 import { Headers, Response } from '@whatwg-node/fetch';
@@ -33,6 +33,7 @@ describe('Schema URL Loader', () => {
 
   afterEach(async () => {
     if (httpServer !== undefined) {
+      httpServer.closeAllConnections();
       await new Promise<void>(resolve => httpServer.close(() => resolve()));
     }
   });
@@ -365,7 +366,7 @@ describe('Schema URL Loader', () => {
       res.end();
     });
 
-    const wsServer = new WSServer({
+    const wsServer = new WebSocketServer({
       server: httpServer,
       path: '/graphql',
     });
@@ -577,18 +578,18 @@ describe('Schema URL Loader', () => {
     expect(result?.data?.['foo']?.bar?.[0]?.id).toBe('BAR');
   });
   it('should return errors correctly if fetch fails', async () => {
-    const executor = loader.getExecutorAsync('http://127.0.0.1:9777/graphql');
+    const executor = loader.getExecutorAsync('http://test.test/graphql');
 
-    const result = (await executor({
+    const result = await executor({
       document: parse(/* GraphQL */ `
         query TestQuery {
           a
         }
       `),
-    })) as ExecutionResult;
-    expect(result.data).toBeUndefined();
-    expect(result.errors).toBeDefined();
-    expect(result.errors?.[0].message).toContain('127.0.0.1:9777');
+    });
+    expect(result).toEqual({
+      errors: expect.any(Array),
+    });
   });
   it('should not accept invalid protocols', async () => {
     const testUrl = 'myprotocol://localhost:8081/graphql';

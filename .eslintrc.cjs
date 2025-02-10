@@ -22,6 +22,7 @@ module.exports = {
     'no-dupe-class-members': 'off',
     'dot-notation': 'off',
     'no-use-before-define': 'off',
+    '@typescript-eslint/no-empty-object-type': 'off',
     '@typescript-eslint/no-unused-vars': 'off',
     '@typescript-eslint/no-use-before-define': 'off',
     '@typescript-eslint/no-namespace': 'off',
@@ -48,7 +49,7 @@ module.exports = {
           {
             name: 'graphql',
             importNames: ['ExecutionResult', 'ExecutionArgs', 'execute', 'subscribe'],
-            message: 'Please use `execute` and `subscribe` from `@graphql-tools/executro` instead.',
+            message: 'Please use `execute` and `subscribe` from `@graphql-tools/executor` instead.',
           },
         ],
       },

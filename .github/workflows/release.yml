@@ -4,21 +4,18 @@ on:
     branches:
       - master
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
 jobs:
   stable:
+    permissions:
+      contents: read
+      id-token: write
     uses: the-guild-org/shared-config/.github/workflows/release-stable.yml@main
     with:
       releaseScript: release
-      nodeVersion: 18
+      nodeVersion: 22
     secrets:
       githubToken: ${{ secrets.GUILD_BOT_TOKEN }}
       npmToken: ${{ secrets.NODE_AUTH_TOKEN }}
-
-  algolia:
-    uses: the-guild-org/shared-config/.github/workflows/algolia-publish.yml@main
-    secrets:
-      githubToken: ${{ secrets.GITHUB_TOKEN }}
-      algoliaAdminApiKey: ${{ secrets.ALGOLIA_ADMIN_API_KEY }}
-    with:
-      domain: https://www.the-guild.dev/graphql/tools/
-      source: 'Tools'

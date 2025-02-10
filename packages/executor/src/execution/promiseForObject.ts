@@ -1,3 +1,5 @@
+import { getAbortPromise } from '@graphql-tools/utils';
+
 type ResolvedObject<TData> = {
   [TKey in keyof TData]: TData[TKey] extends Promise<infer TValue> ? TValue : TData[TKey];
 };
@@ -9,12 +11,19 @@ type ResolvedObject<TData> = {
  * This is akin to bluebird's `Promise.props`, but implemented only using
  * `Promise.all` so it will work with any implementation of ES6 promises.
  */
-export async function promiseForObject<TData>(object: TData): Promise<ResolvedObject<TData>> {
+export async function promiseForObject<TData>(
+  object: TData,
+  signal?: AbortSignal,
+): Promise<ResolvedObject<TData>> {
   const resolvedObject = Object.create(null);
-  await Promise.all(
+  const promises = Promise.all(
     Object.entries(object as any).map(async ([key, value]) => {
       resolvedObject[key] = await value;
     }),
   );
-  return resolvedObject;
+  if (signal) {
+    const abortPromise = getAbortPromise(signal);
+    return Promise.race([abortPromise, promises]).then(() => resolvedObject);
+  }
+  return promises.then(() => resolvedObject);
 }

@@ -1,10 +1,5 @@
 import { buildASTSchema, buildSchema, GraphQLSchema, isSchema } from 'graphql';
-import {
-  applyExtensions,
-  mergeExtensions,
-  mergeResolvers,
-  mergeTypeDefs,
-} from '@graphql-tools/merge';
+import { applyExtensions, mergeResolvers, mergeTypeDefs } from '@graphql-tools/merge';
 import { asArray } from '@graphql-tools/utils';
 import { addResolversToSchema } from './addResolversToSchema.js';
 import { assertResolversPresent } from './assertResolversPresent.js';
@@ -60,6 +55,7 @@ export function makeExecutableSchema<TContext = any>({
   inheritResolversFromInterfaces = false,
   updateResolversInPlace = false,
   schemaExtensions,
+  defaultFieldResolver,
   ...otherOptions
 }: IExecutableSchemaDefinition<TContext>) {
   // Validate and clean up arguments
@@ -94,6 +90,7 @@ export function makeExecutableSchema<TContext = any>({
     resolverValidationOptions,
     inheritResolversFromInterfaces,
     updateResolversInPlace,
+    defaultFieldResolver,
   });
 
   if (Object.keys(resolverValidationOptions).length > 0) {
@@ -101,8 +98,9 @@ export function makeExecutableSchema<TContext = any>({
   }
 
   if (schemaExtensions) {
-    schemaExtensions = mergeExtensions(asArray(schemaExtensions));
-    applyExtensions(schema, schemaExtensions);
+    for (const schemaExtension of asArray(schemaExtensions)) {
+      applyExtensions(schema, schemaExtension);
+    }
   }
 
   return schema;

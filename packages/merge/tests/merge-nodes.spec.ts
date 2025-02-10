@@ -280,6 +280,27 @@ describe('Merge Nodes', () => {
         'Unable to merge GraphQL type "A": Field "f1" already defined with a different type. Declared as "String", but you tried to override with "Int"',
       );
     });
+
+    it('Should merge GraphQL Types and merge directives (when the directive is inherited from the Object prototype)', () => {
+      const type1 = parse(/* GraphQL */ `
+        type A @toString {
+          f1: String
+        }
+      `);
+      const type2 = parse(/* GraphQL */ `
+        type A @test2 {
+          f2: Int
+        }
+      `);
+      const merged = mergeGraphQLNodes([...type1.definitions, ...type2.definitions]);
+      const type = merged['A'];
+      assertObjectTypeDefinitionNode(type);
+      assertSome(type.directives);
+
+      expect(type.directives.length).toBe(2);
+      expect(type.directives[0].name.value).toBe('toString');
+      expect(type.directives[1].name.value).toBe('test2');
+    });
   });
 
   describe('enum', () => {
@@ -470,24 +491,6 @@ describe('Merge Nodes', () => {
       expect(type.fields[0].type.name.value).toBe('String');
       assertNamedTypeNode(type.fields[1].type);
       expect(type.fields[1].type.name.value).toBe('String');
-    });
-
-    it.skip('should remove schema definition', () => {
-      const type1 = parse(/* GraphQL */ `
-        schema {
-          query: Query
-        }
-        type Query {
-          f1: String
-        }
-      `);
-      const type2 = parse(/* GraphQL */ `
-        type Query {
-          f2: String
-        }
-      `);
-      const merged = mergeGraphQLNodes([...type1.definitions, ...type2.definitions]);
-      expect(Object.values(merged).length).toBe(1);
     });
   });
 });

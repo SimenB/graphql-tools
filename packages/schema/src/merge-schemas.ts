@@ -2,6 +2,7 @@ import { GraphQLSchema } from 'graphql';
 import {
   asArray,
   extractExtensionsFromSchema,
+  getDocumentNodeFromSchema,
   getResolversFromSchema,
   IResolvers,
   SchemaExtensions,
@@ -31,7 +32,7 @@ export function mergeSchemas(config: MergeSchemasConfig) {
 
   if (config.schemas != null) {
     for (const schema of config.schemas) {
-      extractedTypeDefs.push(schema);
+      extractedTypeDefs.push(getDocumentNodeFromSchema(schema));
       extractedResolvers.push(getResolversFromSchema(schema));
       extractedSchemaExtensions.push(extractExtensionsFromSchema(schema));
     }

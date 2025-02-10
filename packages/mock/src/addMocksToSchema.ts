@@ -148,7 +148,7 @@ export function addMocksToSchema<TResolvers = IResolvers>({
 
     if (defaultResolvedValue === undefined) {
       // any is used here because generateFieldValue is a private method at time of writing
-      return (store as any).generateFieldValue(info.parentType.name, info.fieldName);
+      return (store as any).generateFieldValue(info.parentType.name, info.fieldName, args);
     }
 
     return undefined;
@@ -249,6 +249,8 @@ export function addMocksToSchema<TResolvers = IResolvers>({
     ? addResolversToSchema({
         schema: schemaWithMocks,
         resolvers: resolvers as any,
+        // This option ensures that schemas are not cloned multiple times, which can be very expensive
+        updateResolversInPlace: true,
       })
     : schemaWithMocks;
 }

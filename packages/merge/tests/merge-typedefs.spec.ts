@@ -529,25 +529,31 @@ describe('Merge TypeDefs', () => {
       );
     });
 
-    it('should fail if inputs of the same directive are different from each other', (done: jest.DoneCallback) => {
-      try {
-        mergeTypeDefs([
-          `directive @id on FIELD_DEFINITION`,
-          `directive @id(name: String) on FIELD_DEFINITION`,
-          `type MyType { id: Int @id }`,
-          `type Query { f1: MyType }`,
-        ]);
+    it('should merge args if inputs of the same directive are different from each other', () => {
+      const result = mergeTypeDefs([
+        `directive @id on FIELD_DEFINITION`,
+        `directive @id(name: String) on FIELD_DEFINITION`,
+        `type MyType { id: Int @id }`,
+        `type Query { f1: MyType }`,
+      ]);
 
-        done.fail('It should have failed');
-      } catch (e: any) {
-        const msg = stripWhitespaces(e.message);
+      expect(stripWhitespaces(print(result))).toBe(
+        stripWhitespaces(/* GraphQL */ `
+          directive @id(name: String) on FIELD_DEFINITION
 
-        expect(msg).toMatch('GraphQL directive "id"');
-        expect(msg).toMatch('Existing directive: directive @id on FIELD_DEFINITION');
-        expect(msg).toMatch('Received directive: directive @id(name: String) on FIELD_DEFINITION');
+          type MyType {
+            id: Int @id
+          }
 
-        done();
-      }
+          type Query {
+            f1: MyType
+          }
+
+          schema {
+            query: Query
+          }
+        `),
+      );
     });
 
     it('should merge the same directives', () => {
@@ -755,16 +761,9 @@ describe('Merge TypeDefs', () => {
       );
 
       expect(stripWhitespaces(print(merged))).toBe(
-        stripWhitespaces(/* GraphQL */ `
+        stripWhitespaces(`
           type Mutation {
-            doSomething(
-              argA: Int!
-              argB: Int
-              argC: Int!
-              argD: String
-              argE: Int!
-              argF: Boolean
-            ): Boolean!
+            doSomething(argA: Int!, argB: Int, argC: Int!, argD: String, argE: Int!, argF: Boolean): Boolean!
           }
 
           schema {
@@ -788,16 +787,9 @@ describe('Merge TypeDefs', () => {
       );
 
       expect(stripWhitespaces(print(merged))).toBe(
-        stripWhitespaces(/* GraphQL */ `
+        stripWhitespaces(`
           type Mutation {
-            doSomething(
-              argA: Int!
-              argB: Int!
-              argC: Int
-              argD: Int!
-              argE: Int!
-              argF: Boolean
-            ): Boolean!
+            doSomething(argA: Int!, argB: Int!, argC: Int, argD: Int!, argE: Int!, argF: Boolean): Boolean!
           }
 
           schema {
@@ -1711,5 +1703,18 @@ describe('Merge TypeDefs', () => {
       commentDescriptions: true,
     });
     expect(reformulatedGraphQL).toBeSimilarString(schemaWithDescription);
+  });
+  it('merges the directives with the same name and same arguments', () => {
+    const directive = parse(/* GraphQL */ `
+      directive @link(
+        url: String!
+        as: String
+        import: [link__Import]
+        for: link__Purpose
+      ) on SCHEMA
+    `);
+    const typeDefs = [directive, directive];
+    const merged = mergeTypeDefs(typeDefs);
+    expect(print(merged)).toBeSimilarString(print(directive));
   });
 });

@@ -16,7 +16,6 @@ import {
   GraphQLInputField,
   GraphQLInputObjectType,
   GraphQLInterfaceType,
-  GraphQLNamedType,
   GraphQLObjectType,
   GraphQLScalarType,
   GraphQLSchema,
@@ -42,15 +41,18 @@ import {
   ScalarTypeDefinitionNode,
   SchemaDefinitionNode,
   SchemaExtensionNode,
-  StringValueNode,
-  TypeDefinitionNode,
-  TypeExtensionNode,
   UnionTypeDefinitionNode,
+  ValueNode,
 } from 'graphql';
 import { astFromType } from './astFromType.js';
 import { astFromValue } from './astFromValue.js';
 import { astFromValueUntyped } from './astFromValueUntyped.js';
-import { getDirectivesInExtensions } from './get-directives.js';
+import { getDescriptionNode } from './descriptionFromObject.js';
+import {
+  DirectableGraphQLObject,
+  DirectiveAnnotation,
+  getDirectivesInExtensions,
+} from './get-directives.js';
 import { isSome } from './helpers.js';
 import { getRootTypeMap } from './rootTypes.js';
 import {
@@ -182,17 +184,10 @@ export function astFromSchema(
     directives: directives as any,
   };
 
-  // This code is so weird because it needs to support GraphQL.js 14
-  // In GraphQL.js 14 there is no `description` value on schemaNode
-  (schemaNode as unknown as { description?: StringValueNode }).description =
-    (schema.astNode as unknown as { description: string })?.description ??
-    (schema as unknown as { description: string }).description != null
-      ? {
-          kind: Kind.STRING,
-          value: (schema as unknown as { description: string }).description,
-          block: true,
-        }
-      : undefined;
+  const descriptionNode = getDescriptionNode(schema);
+  if (descriptionNode) {
+    (schemaNode as any).description = descriptionNode;
+  }
 
   return schemaNode;
 }
@@ -204,14 +199,7 @@ export function astFromDirective(
 ): DirectiveDefinitionNode {
   return {
     kind: Kind.DIRECTIVE_DEFINITION,
-    description:
-      directive.astNode?.description ??
-      (directive.description
-        ? {
-            kind: Kind.STRING,
-            value: directive.description,
-          }
-        : undefined),
+    description: getDescriptionNode(directive),
     name: {
       kind: Kind.NAME,
       value: directive.name,
@@ -226,82 +214,64 @@ export function astFromDirective(
   };
 }
 
-export function getDirectiveNodes(
-  entity: GraphQLSchema | GraphQLNamedType | GraphQLEnumValue,
-  schema: GraphQLSchema,
-  pathToDirectivesInExtensions?: Array<string>,
-): Array<DirectiveNode> {
-  const directivesInExtensions = getDirectivesInExtensions(entity, pathToDirectivesInExtensions);
-
-  let nodes: Array<
-    | SchemaDefinitionNode
-    | SchemaExtensionNode
-    | TypeDefinitionNode
-    | TypeExtensionNode
-    | EnumValueDefinitionNode
-  > = [];
-  if (entity.astNode != null) {
-    nodes.push(entity.astNode);
-  }
-  if ('extensionASTNodes' in entity && entity.extensionASTNodes != null) {
-    nodes = nodes.concat(entity.extensionASTNodes);
-  }
-
-  let directives: Array<DirectiveNode>;
-  if (directivesInExtensions != null) {
-    directives = makeDirectiveNodes(schema, directivesInExtensions);
-  } else {
-    directives = [];
-    for (const node of nodes) {
-      if (node.directives) {
-        directives.push(...node.directives);
-      }
-    }
-  }
-
-  return directives;
-}
-
-export function getDeprecatableDirectiveNodes(
-  entity: GraphQLArgument | GraphQLField<any, any> | GraphQLInputField | GraphQLEnumValue,
+export function getDirectiveNodes<TDirectiveNode extends DirectiveNode>(
+  entity: DirectableGraphQLObject & {
+    deprecationReason?: string | null;
+    specifiedByUrl?: string | null;
+    specifiedByURL?: string | null;
+  },
   schema?: GraphQLSchema,
   pathToDirectivesInExtensions?: Array<string>,
-): Array<DirectiveNode> {
-  let directiveNodesBesidesDeprecated: Array<DirectiveNode> = [];
-  let deprecatedDirectiveNode: Maybe<DirectiveNode> = null;
+): Array<TDirectiveNode> {
+  let directiveNodesBesidesDeprecatedAndSpecifiedBy: Array<TDirectiveNode> = [];
 
   const directivesInExtensions = getDirectivesInExtensions(entity, pathToDirectivesInExtensions);
 
-  let directives: Maybe<ReadonlyArray<DirectiveNode>>;
+  let directives: Maybe<ReadonlyArray<TDirectiveNode>>;
   if (directivesInExtensions != null) {
     directives = makeDirectiveNodes(schema, directivesInExtensions);
-  } else {
-    directives = entity.astNode?.directives;
   }
 
+  let deprecatedDirectiveNode: Maybe<TDirectiveNode> = null;
+  let specifiedByDirectiveNode: Maybe<TDirectiveNode> = null;
   if (directives != null) {
-    directiveNodesBesidesDeprecated = directives.filter(
-      directive => directive.name.value !== 'deprecated',
+    directiveNodesBesidesDeprecatedAndSpecifiedBy = directives.filter(
+      directive => directive.name.value !== 'deprecated' && directive.name.value !== 'specifiedBy',
     );
-    if ((entity as unknown as { deprecationReason: string }).deprecationReason != null) {
+    if (entity.deprecationReason != null) {
       deprecatedDirectiveNode = directives.filter(
         directive => directive.name.value === 'deprecated',
       )?.[0];
     }
+    if (entity.specifiedByUrl != null || entity.specifiedByURL != null) {
+      specifiedByDirectiveNode = directives.filter(
+        directive => directive.name.value === 'specifiedBy',
+      )?.[0];
+    }
+  }
+
+  if (entity.deprecationReason != null && deprecatedDirectiveNode == null) {
+    deprecatedDirectiveNode = makeDeprecatedDirective<TDirectiveNode>(entity.deprecationReason);
   }
 
   if (
-    (entity as unknown as { deprecationReason: string }).deprecationReason != null &&
-    deprecatedDirectiveNode == null
+    entity.specifiedByUrl != null ||
+    (entity.specifiedByURL != null && specifiedByDirectiveNode == null)
   ) {
-    deprecatedDirectiveNode = makeDeprecatedDirective(
-      (entity as unknown as { deprecationReason: string }).deprecationReason,
-    );
+    const specifiedByValue = entity.specifiedByUrl || entity.specifiedByURL;
+    const specifiedByArgs = {
+      url: specifiedByValue,
+    };
+    specifiedByDirectiveNode = makeDirectiveNode<TDirectiveNode>('specifiedBy', specifiedByArgs);
   }
 
-  return deprecatedDirectiveNode == null
-    ? directiveNodesBesidesDeprecated
-    : [deprecatedDirectiveNode].concat(directiveNodesBesidesDeprecated);
+  if (deprecatedDirectiveNode != null) {
+    directiveNodesBesidesDeprecatedAndSpecifiedBy.push(deprecatedDirectiveNode);
+  }
+  if (specifiedByDirectiveNode != null) {
+    directiveNodesBesidesDeprecatedAndSpecifiedBy.push(specifiedByDirectiveNode);
+  }
+  return directiveNodesBesidesDeprecatedAndSpecifiedBy;
 }
 
 export function astFromArg(
@@ -311,15 +281,7 @@ export function astFromArg(
 ): InputValueDefinitionNode {
   return {
     kind: Kind.INPUT_VALUE_DEFINITION,
-    description:
-      arg.astNode?.description ??
-      (arg.description
-        ? {
-            kind: Kind.STRING,
-            value: arg.description,
-            block: true,
-          }
-        : undefined),
+    description: getDescriptionNode(arg),
     name: {
       kind: Kind.NAME,
       value: arg.name,
@@ -328,9 +290,9 @@ export function astFromArg(
     // ConstXNode has been introduced in v16 but it is not compatible with XNode so we do `as any` for backwards compatibility
     defaultValue:
       arg.defaultValue !== undefined
-        ? astFromValue(arg.defaultValue, arg.type) ?? undefined
+        ? (astFromValue(arg.defaultValue, arg.type) ?? undefined)
         : (undefined as any),
-    directives: getDeprecatableDirectiveNodes(arg, schema, pathToDirectivesInExtensions) as any,
+    directives: getDirectiveNodes(arg, schema, pathToDirectivesInExtensions) as any,
   };
 }
 
@@ -341,15 +303,7 @@ export function astFromObjectType(
 ): ObjectTypeDefinitionNode {
   return {
     kind: Kind.OBJECT_TYPE_DEFINITION,
-    description:
-      type.astNode?.description ??
-      (type.description
-        ? {
-            kind: Kind.STRING,
-            value: type.description,
-            block: true,
-          }
-        : undefined),
+    description: getDescriptionNode(type),
     name: {
       kind: Kind.NAME,
       value: type.name,
@@ -371,15 +325,7 @@ export function astFromInterfaceType(
 ): InterfaceTypeDefinitionNode {
   const node: InterfaceTypeDefinitionNode = {
     kind: Kind.INTERFACE_TYPE_DEFINITION,
-    description:
-      type.astNode?.description ??
-      (type.description
-        ? {
-            kind: Kind.STRING,
-            value: type.description,
-            block: true,
-          }
-        : undefined),
+    description: getDescriptionNode(type),
     name: {
       kind: Kind.NAME,
       value: type.name,
@@ -406,15 +352,7 @@ export function astFromUnionType(
 ): UnionTypeDefinitionNode {
   return {
     kind: Kind.UNION_TYPE_DEFINITION,
-    description:
-      type.astNode?.description ??
-      (type.description
-        ? {
-            kind: Kind.STRING,
-            value: type.description,
-            block: true,
-          }
-        : undefined),
+    description: getDescriptionNode(type),
     name: {
       kind: Kind.NAME,
       value: type.name,
@@ -432,15 +370,7 @@ export function astFromInputObjectType(
 ): InputObjectTypeDefinitionNode {
   return {
     kind: Kind.INPUT_OBJECT_TYPE_DEFINITION,
-    description:
-      type.astNode?.description ??
-      (type.description
-        ? {
-            kind: Kind.STRING,
-            value: type.description,
-            block: true,
-          }
-        : undefined),
+    description: getDescriptionNode(type),
     name: {
       kind: Kind.NAME,
       value: type.name,
@@ -460,15 +390,7 @@ export function astFromEnumType(
 ): EnumTypeDefinitionNode {
   return {
     kind: Kind.ENUM_TYPE_DEFINITION,
-    description:
-      type.astNode?.description ??
-      (type.description
-        ? {
-            kind: Kind.STRING,
-            value: type.description,
-            block: true,
-          }
-        : undefined),
+    description: getDescriptionNode(type),
     name: {
       kind: Kind.NAME,
       value: type.name,
@@ -488,9 +410,7 @@ export function astFromScalarType(
 ): ScalarTypeDefinitionNode {
   const directivesInExtensions = getDirectivesInExtensions(type, pathToDirectivesInExtensions);
 
-  const directives: DirectiveNode[] = directivesInExtensions
-    ? makeDirectiveNodes(schema, directivesInExtensions)
-    : (type.astNode?.directives as DirectiveNode[]) || [];
+  const directives = makeDirectiveNodes(schema, directivesInExtensions);
 
   const specifiedByValue = ((type as any)['specifiedByUrl'] ||
     (type as any)['specifiedByURL']) as string;
@@ -506,15 +426,7 @@ export function astFromScalarType(
 
   return {
     kind: Kind.SCALAR_TYPE_DEFINITION,
-    description:
-      type.astNode?.description ??
-      (type.description
-        ? {
-            kind: Kind.STRING,
-            value: type.description,
-            block: true,
-          }
-        : undefined),
+    description: getDescriptionNode(type),
     name: {
       kind: Kind.NAME,
       value: type.name,
@@ -531,15 +443,7 @@ export function astFromField(
 ): FieldDefinitionNode {
   return {
     kind: Kind.FIELD_DEFINITION,
-    description:
-      field.astNode?.description ??
-      (field.description
-        ? {
-            kind: Kind.STRING,
-            value: field.description,
-            block: true,
-          }
-        : undefined),
+    description: getDescriptionNode(field),
     name: {
       kind: Kind.NAME,
       value: field.name,
@@ -547,7 +451,7 @@ export function astFromField(
     arguments: field.args.map(arg => astFromArg(arg, schema, pathToDirectivesInExtensions)),
     type: astFromType(field.type),
     // ConstXNode has been introduced in v16 but it is not compatible with XNode so we do `as any` for backwards compatibility
-    directives: getDeprecatableDirectiveNodes(field, schema, pathToDirectivesInExtensions) as any,
+    directives: getDirectiveNodes(field, schema, pathToDirectivesInExtensions) as any,
   };
 }
 
@@ -558,22 +462,14 @@ export function astFromInputField(
 ): InputValueDefinitionNode {
   return {
     kind: Kind.INPUT_VALUE_DEFINITION,
-    description:
-      field.astNode?.description ??
-      (field.description
-        ? {
-            kind: Kind.STRING,
-            value: field.description,
-            block: true,
-          }
-        : undefined),
+    description: getDescriptionNode(field),
     name: {
       kind: Kind.NAME,
       value: field.name,
     },
     type: astFromType(field.type),
     // ConstXNode has been introduced in v16 but it is not compatible with XNode so we do `as any` for backwards compatibility
-    directives: getDeprecatableDirectiveNodes(field, schema, pathToDirectivesInExtensions) as any,
+    directives: getDirectiveNodes(field, schema, pathToDirectivesInExtensions) as any,
     defaultValue: astFromValue(field.defaultValue, field.type) ?? (undefined as any),
   };
 }
@@ -585,67 +481,49 @@ export function astFromEnumValue(
 ): EnumValueDefinitionNode {
   return {
     kind: Kind.ENUM_VALUE_DEFINITION,
-    description:
-      value.astNode?.description ??
-      (value.description
-        ? {
-            kind: Kind.STRING,
-            value: value.description,
-            block: true,
-          }
-        : undefined),
+    description: getDescriptionNode(value),
     name: {
       kind: Kind.NAME,
       value: value.name,
     },
-    // ConstXNode has been introduced in v16 but it is not compatible with XNode so we do `as any` for backwards compatibility
-    directives: getDeprecatableDirectiveNodes(value, schema, pathToDirectivesInExtensions) as any,
+    directives: getDirectiveNodes(value, schema, pathToDirectivesInExtensions),
   };
 }
 
-export function makeDeprecatedDirective(deprecationReason: string): DirectiveNode {
+export function makeDeprecatedDirective<TDirectiveNode extends DirectiveNode>(
+  deprecationReason: string,
+): TDirectiveNode {
   return makeDirectiveNode('deprecated', { reason: deprecationReason }, GraphQLDeprecatedDirective);
 }
 
-export function makeDirectiveNode(
+export function makeDirectiveNode<TDirectiveNode extends DirectiveNode>(
   name: string,
-  args: Record<string, any>,
+  args?: Record<string, any>,
   directive?: Maybe<GraphQLDirective>,
-): DirectiveNode {
+): TDirectiveNode {
   const directiveArguments: Array<ArgumentNode> = [];
 
-  if (directive != null) {
-    for (const arg of directive.args) {
-      const argName = arg.name;
-      const argValue = args[argName];
-      if (argValue !== undefined) {
-        const value = astFromValue(argValue, arg.type);
-        if (value) {
-          directiveArguments.push({
-            kind: Kind.ARGUMENT,
-            name: {
-              kind: Kind.NAME,
-              value: argName,
-            },
-            value,
-          });
-        }
+  for (const argName in args) {
+    const argValue = args[argName];
+    let value: Maybe<ValueNode>;
+    if (directive != null) {
+      const arg = directive.args.find(arg => arg.name === argName);
+      if (arg) {
+        value = astFromValue(argValue, arg.type);
       }
     }
-  } else {
-    for (const argName in args) {
-      const argValue = args[argName];
-      const value = astFromValueUntyped(argValue);
-      if (value) {
-        directiveArguments.push({
-          kind: Kind.ARGUMENT,
-          name: {
-            kind: Kind.NAME,
-            value: argName,
-          },
-          value,
-        });
-      }
+    if (value == null) {
+      value = astFromValueUntyped(argValue);
+    }
+    if (value != null) {
+      directiveArguments.push({
+        kind: Kind.ARGUMENT,
+        name: {
+          kind: Kind.NAME,
+          value: argName,
+        },
+        value,
+      });
     }
   }
 
@@ -656,24 +534,17 @@ export function makeDirectiveNode(
       value: name,
     },
     arguments: directiveArguments,
-  };
+  } as unknown as TDirectiveNode;
 }
 
-export function makeDirectiveNodes(
+export function makeDirectiveNodes<TDirectiveNode extends DirectiveNode>(
   schema: Maybe<GraphQLSchema>,
-  directiveValues: Record<string, any>,
-): Array<DirectiveNode> {
-  const directiveNodes: Array<DirectiveNode> = [];
-  for (const directiveName in directiveValues) {
-    const arrayOrSingleValue = directiveValues[directiveName];
-    const directive = schema?.getDirective(directiveName);
-    if (Array.isArray(arrayOrSingleValue)) {
-      for (const value of arrayOrSingleValue) {
-        directiveNodes.push(makeDirectiveNode(directiveName, value, directive));
-      }
-    } else {
-      directiveNodes.push(makeDirectiveNode(directiveName, arrayOrSingleValue, directive));
-    }
+  directiveValues: DirectiveAnnotation[],
+): Array<TDirectiveNode> {
+  const directiveNodes: Array<TDirectiveNode> = [];
+  for (const { name, args } of directiveValues) {
+    const directive = schema?.getDirective(name);
+    directiveNodes.push(makeDirectiveNode(name, args, directive));
   }
   return directiveNodes;
 }
