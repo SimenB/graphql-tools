@@ -1,3 +1,5 @@
+// eslint-disable-next-line import/no-extraneous-dependencies
+import { inspect } from 'cross-inspect';
 import {
   GraphQLBoolean,
   GraphQLInt,
@@ -12,8 +14,8 @@ import {
   Kind,
   parse,
 } from 'graphql';
-import { inspect } from '@graphql-tools/utils';
 import { expectJSON } from '../../__testUtils__/expectJSON.js';
+import { resolveOnNextTick } from '../../__testUtils__/resolveOnNextTick.js';
 import { execute, executeSync } from '../execute.js';
 
 describe('Execute: Handles basic execution tasks', () => {
@@ -193,7 +195,6 @@ describe('Execute: Handles basic execution tasks', () => {
 
     executeSync({ schema, document, rootValue, variableValues });
 
-    // @ts-expect-error
     expect(Object.keys(resolvedInfo)).toEqual([
       'fieldName',
       'fieldNodes',
@@ -205,6 +206,7 @@ describe('Execute: Handles basic execution tasks', () => {
       'rootValue',
       'operation',
       'variableValues',
+      'signal',
     ]);
 
     const operation = document.definitions[0];
@@ -460,7 +462,7 @@ describe('Execute: Handles basic execution tasks', () => {
           path: ['syncError'],
         },
         {
-          message: 'Unexpected error value: "Error getting syncRawError"',
+          message: 'Error getting syncRawError',
           locations: [{ line: 5, column: 9 }],
           path: ['syncRawError'],
         },
@@ -485,12 +487,12 @@ describe('Execute: Handles basic execution tasks', () => {
           path: ['asyncReject'],
         },
         {
-          message: 'Unexpected error value: "Error getting asyncRawReject"',
+          message: 'Error getting asyncRawReject',
           locations: [{ line: 10, column: 9 }],
           path: ['asyncRawReject'],
         },
         {
-          message: 'Unexpected error value: undefined',
+          message: 'undefined',
           locations: [{ line: 11, column: 9 }],
           path: ['asyncEmptyReject'],
         },
@@ -500,7 +502,7 @@ describe('Execute: Handles basic execution tasks', () => {
           path: ['asyncError'],
         },
         {
-          message: 'Unexpected error value: "Error getting asyncRawError"',
+          message: 'Error getting asyncRawError',
           locations: [{ line: 13, column: 9 }],
           path: ['asyncRawError'],
         },
@@ -561,6 +563,55 @@ describe('Execute: Handles basic execution tasks', () => {
         },
       ],
     });
+  });
+
+  it('handles sync errors combined with rejections', async () => {
+    let isAsyncResolverFinished = false;
+
+    const schema = new GraphQLSchema({
+      query: new GraphQLObjectType({
+        name: 'Query',
+        fields: {
+          syncNullError: {
+            type: new GraphQLNonNull(GraphQLString),
+            resolve: () => null,
+          },
+          asyncNullError: {
+            type: new GraphQLNonNull(GraphQLString),
+            async resolve() {
+              await resolveOnNextTick();
+              await resolveOnNextTick();
+              await resolveOnNextTick();
+              isAsyncResolverFinished = true;
+              return null;
+            },
+          },
+        },
+      }),
+    });
+
+    // Order is important here, as the promise has to be created before the synchronous error is thrown
+    const document = parse(`
+      {
+        asyncNullError
+        syncNullError
+      }
+    `);
+
+    const result = execute({ schema, document });
+
+    expect(isAsyncResolverFinished).toEqual(false);
+    expectJSON(await result).toDeepEqual({
+      data: null,
+      errors: [
+        {
+          message: 'Cannot return null for non-nullable field Query.syncNullError.',
+          locations: [{ line: 4, column: 9 }],
+          path: ['syncNullError'],
+        },
+      ],
+    });
+    expect(isAsyncResolverFinished).toEqual(true);
   });
 
   it('Full response path is included for non-nullable fields', () => {

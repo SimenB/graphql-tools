@@ -9,15 +9,53 @@ type UnboxIntersection<T> = T extends { 0: infer U } ? U : never;
 export function mergeDeep<S extends any[]>(
   sources: S,
   respectPrototype = false,
+  respectArrays = false,
+  respectArrayLength = false,
 ): UnboxIntersection<UnionToIntersection<BoxedTupleTypes<S>>> & any {
-  const target = sources[0] || {};
-  const output = {};
+  let expectedLength: number | undefined;
+  let allArrays = true;
+  const areArraysInTheSameLength = sources.every(source => {
+    if (Array.isArray(source)) {
+      if (expectedLength === undefined) {
+        expectedLength = source.length;
+        return true;
+      } else if (expectedLength === source.length) {
+        return true;
+      }
+    } else {
+      allArrays = false;
+    }
+    return false;
+  });
+
+  if (respectArrayLength && areArraysInTheSameLength) {
+    return new Array(expectedLength).fill(null).map((_, index) =>
+      mergeDeep(
+        sources.map(source => source[index]),
+        respectPrototype,
+        respectArrays,
+        respectArrayLength,
+      ),
+    );
+  }
+  if (allArrays) {
+    return sources.flat(1);
+  }
+
+  let output: any;
+  let firstObjectSource: any;
   if (respectPrototype) {
-    Object.setPrototypeOf(output, Object.create(Object.getPrototypeOf(target)));
+    firstObjectSource = sources.find(source => isObject(source));
+    if (output == null) {
+      output = {};
+    }
+    if (firstObjectSource) {
+      Object.setPrototypeOf(output, Object.create(Object.getPrototypeOf(firstObjectSource)));
+    }
   }
   for (const source of sources) {
-    if (isObject(target) && isObject(source)) {
-      if (respectPrototype) {
+    if (isObject(source)) {
+      if (firstObjectSource) {
         const outputPrototype = Object.getPrototypeOf(output);
         const sourcePrototype = Object.getPrototypeOf(source);
         if (sourcePrototype) {
@@ -31,16 +69,28 @@ export function mergeDeep<S extends any[]>(
       }
 
       for (const key in source) {
-        if (isObject(source[key])) {
-          if (!(key in output)) {
-            Object.assign(output, { [key]: source[key] });
-          } else {
-            output[key] = mergeDeep([output[key], source[key]] as S, respectPrototype);
-          }
+        if (output == null) {
+          output = {};
+        }
+        if (key in output) {
+          output[key] = mergeDeep(
+            [output[key], source[key]],
+            respectPrototype,
+            respectArrays,
+            respectArrayLength,
+          );
         } else {
-          Object.assign(output, { [key]: source[key] });
+          output[key] = source[key];
         }
       }
+    } else if (Array.isArray(source)) {
+      if (!Array.isArray(output)) {
+        output = source;
+      } else {
+        output = mergeDeep([output, source], respectPrototype, respectArrays, respectArrayLength);
+      }
+    } else {
+      output = source;
     }
   }
   return output;

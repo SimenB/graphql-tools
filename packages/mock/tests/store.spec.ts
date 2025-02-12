@@ -1,5 +1,5 @@
 import { buildSchema } from 'graphql';
-import { createMockStore } from '../src/index.js';
+import { createMockStore, MockStore } from '../src/index.js';
 import { assertIsRef, Ref } from '../src/types.js';
 import { makeRef } from '../src/utils.js';
 
@@ -131,7 +131,7 @@ describe('MockStore', () => {
     expect(user1.$ref).toEqual(user1Bis.$ref);
   });
 
-  it('sould return a different value if called with different field args', () => {
+  it('should return a different value if called with different field args', () => {
     const store = createMockStore({ schema });
     const user1 = store.get({
       typeName: 'Query',
@@ -608,5 +608,64 @@ describe('MockStore', () => {
     store.set(makeRef('User', 'me'), 'name', 'Alexandre');
     store.reset();
     expect(store.get('User', 'me', 'name')).not.toEqual('Alexandre');
+  });
+
+  it('should pass field args to value getter function', () => {
+    const store = createMockStore({
+      schema,
+      mocks: {
+        User: () => {
+          return {
+            name: ({ format }: { format: string }) =>
+              format === 'fullName' ? 'Alexandre the Great' : 'Alex',
+          };
+        },
+      },
+    });
+
+    expect(store.get('User', '123', 'name', { format: 'fullName' })).toEqual('Alexandre the Great');
+    expect(store.get('User', '123', 'name', { format: 'shortName' })).toEqual('Alex');
+  });
+
+  describe('filter method', () => {
+    it('should be able to filter an empty list', () => {
+      const store = new MockStore({ schema });
+      store.set('User', 'user1', { name: 'Ross' });
+      expect(store.filter('User', () => false)).toEqual([]);
+      store.reset();
+      expect(store.filter('User', () => true)).toEqual([]);
+    });
+
+    it('should apply the filter', () => {
+      const store = new MockStore({ schema });
+      store.set('User', 'user1', { name: 'Ross' });
+      store.set('User', 'user2', { name: 'Nico' });
+      expect(store.filter('User', () => true)).toEqual([{ name: 'Ross' }, { name: 'Nico' }]);
+      expect(store.filter('User', ({ name }) => (name as string).startsWith('R'))).toEqual([
+        { name: 'Ross' },
+      ]);
+    });
+  });
+
+  describe('find method', () => {
+    it('should return undefined for an empty store', () => {
+      const store = new MockStore({ schema });
+      expect(store.find('User', () => true)).toBeUndefined();
+    });
+
+    it('should return undefined for a miss', () => {
+      const store = new MockStore({ schema });
+      store.set('User', 'user1', { name: 'Ross' });
+      expect(store.find('User', () => false)).toBeUndefined();
+    });
+
+    it('should return a match', () => {
+      const store = new MockStore({ schema });
+      store.set('User', 'user1', { name: 'Ross' });
+      store.set('User', 'user2', { name: 'Nico' });
+      expect(store.find('User', ({ name }) => (name as string).startsWith('N'))).toEqual({
+        name: 'Nico',
+      });
+    });
   });
 });

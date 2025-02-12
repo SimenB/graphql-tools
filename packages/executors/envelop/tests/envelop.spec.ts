@@ -34,7 +34,7 @@ describe('Envelop', () => {
         hello: 'Hello World!',
       },
     });
-    expect(executor).toBeCalledWith({
+    expect(executor).toHaveBeenCalledWith({
       document,
       context,
     });
@@ -59,31 +59,58 @@ describe('Envelop', () => {
       document,
     });
     expect(result[Symbol.asyncIterator]).toBeDefined();
-    const collectedResults = [];
+    const collectedResults: any[] = [];
     for await (const chunk of result as AsyncIterableIterator<any>) {
       collectedResults.push(chunk);
     }
-    expect(collectedResults).toMatchInlineSnapshot(`
-      [
-        {
-          "data": {
-            "count": 0,
-          },
+    expect(collectedResults).toEqual([
+      {
+        data: {
+          count: 0,
         },
-        {
-          "data": {
-            "count": 1,
-          },
+      },
+      {
+        data: {
+          count: 1,
         },
-        {
-          "data": {
-            "count": 2,
-          },
+      },
+      {
+        data: {
+          count: 2,
         },
-      ]
-    `);
+      },
+    ]);
 
     expect(executor).toBeCalledWith({
+      document,
+      context,
+    });
+  });
+  it('should skip validation if schema is not provided', async () => {
+    const executor: Executor = jest.fn().mockImplementation(() => {
+      return {
+        data: {
+          hello: 'Hello World!',
+        },
+      };
+    });
+    const getEnveloped = envelop({
+      plugins: [useExecutor(executor)],
+    });
+    const context = {};
+    const { validate, execute } = getEnveloped(context);
+    const validationResult = validate({}, document);
+    expect(validationResult).toHaveLength(0);
+    const result = await execute({
+      schema: {},
+      document,
+    });
+    expect(result).toEqual({
+      data: {
+        hello: 'Hello World!',
+      },
+    });
+    expect(executor).toHaveBeenCalledWith({
       document,
       context,
     });

@@ -1,6 +1,6 @@
 {
   "name": "@graphql-tools/utils",
-  "version": "10.0.3",
+  "version": "10.8.1",
   "type": "module",
   "description": "Common package containing utils and types for GraphQL tools",
   "repository": {
@@ -30,20 +30,6 @@
         "default": "./dist/esm/index.js"
       }
     },
-    "./*": {
-      "require": {
-        "types": "./dist/typings/*.d.cts",
-        "default": "./dist/cjs/*.js"
-      },
-      "import": {
-        "types": "./dist/typings/*.d.ts",
-        "default": "./dist/esm/*.js"
-      },
-      "default": {
-        "types": "./dist/typings/*.d.ts",
-        "default": "./dist/esm/*.js"
-      }
-    },
     "./package.json": "./package.json"
   },
   "typings": "dist/typings/index.d.ts",
@@ -52,13 +38,15 @@
   },
   "dependencies": {
     "@graphql-typed-document-node/core": "^3.1.1",
-    "dset": "^3.1.2",
+    "cross-inspect": "1.0.1",
+    "dset": "^3.1.4",
     "tslib": "^2.4.0"
   },
   "devDependencies": {
+    "@graphql-tools/stitch": "^9.3.4",
     "@types/dateformat": "3.0.1",
     "dateformat": "4.6.3",
-    "graphql-scalars": "1.22.2"
+    "graphql-scalars": "1.24.1"
   },
   "publishConfig": {
     "directory": "dist",

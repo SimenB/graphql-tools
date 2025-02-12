@@ -1,4 +1,5 @@
 import {
+  ASTNode,
   DefinitionNode,
   DirectiveDefinitionNode,
   Kind,
@@ -104,7 +105,18 @@ export function mergeGraphQLNodes(
             );
             break;
           case Kind.DIRECTIVE_DEFINITION:
-            mergedResultMap[name] = mergeDirective(nodeDefinition, mergedResultMap[name] as any);
+            if (mergedResultMap[name]) {
+              const isInheritedFromPrototype = name in {}; // i.e. toString
+              if (isInheritedFromPrototype) {
+                if (!isASTNode(mergedResultMap[name])) {
+                  mergedResultMap[name] = undefined as any;
+                }
+              }
+            }
+            mergedResultMap[name] = mergeDirective(
+              nodeDefinition,
+              mergedResultMap[name] as DirectiveDefinitionNode,
+            );
             break;
         }
       }
@@ -120,4 +132,10 @@ export function mergeGraphQLNodes(
     }
   }
   return mergedResultMap;
+}
+
+function isASTNode(node: any): node is ASTNode {
+  return (
+    node != null && typeof node === 'object' && 'kind' in node && typeof node.kind === 'string'
+  );
 }

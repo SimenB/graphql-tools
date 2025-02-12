@@ -16,6 +16,7 @@ export default function generateConfig(
     'decorators-legacy',
     'doExpressions',
     'dynamicImport',
+    'explicitResourceManagement',
     'exportDefaultFrom',
     'exportNamespaceFrom',
     'functionBind',
@@ -76,6 +77,18 @@ export default function generateConfig(
     case '.svelte':
       plugins.push('typescript', 'svelte');
       break;
+    case '.astro':
+      plugins.push('typescript', 'jsx');
+      break;
+    case '.gts':
+      plugins.push('typescript');
+      break;
+    case '.gjs':
+      // .gjs files need to be parsed as TypeScript because Ember relies on decorators, which are handled by TypeScript.
+      // without this, it throws a SyntaxError: Unexpected token, expected "{"
+      // when native decorators are supported, we should remove this
+      plugins.push('typescript');
+      break;
     default:
       plugins.push('jsx', ...dynamicFlowPlugins);
       break;
@@ -87,5 +100,6 @@ export default function generateConfig(
     sourceType: 'module',
     plugins,
     allowUndeclaredExports: true,
+    sourceFilename: filePath,
   };
 }

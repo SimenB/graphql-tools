@@ -19,14 +19,14 @@ packages/load/tests/loaders/schema/test-files/error.ts
 packages/load/tests/loaders/schema/test-files/schema-dir/invalid.graphql
 packages/loaders/git/tests/test-files/type-defs-invalid.graphql
 packages/loaders/json-file/tests/test-files/failing/malformed.json
+packages/federation/test/fixtures/federation-compatibility/*
 .next/
 .bob/
 CHANGELOG.md
 
-website/src/pages/docs/api
-# temporarly ignore follow files because prettier-ignore comments don't work in mdx2
-# see https://github.com/prettier/prettier/pull/12208
-website/src/pages/docs/migration/migration-from-tools.mdx
-website/src/pages/docs/schema-stitching/stitch-schema-extensions.mdx
+website/src/content/api
 
-.changeset/*-dependencies.md
+.changeset/*
+!.changeset/README.md
+!.changeset/config.json
+.husky
